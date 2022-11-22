@@ -55,6 +55,7 @@ export function setup() {
 
 export default function(data) {
 	const path = testPaths[line++]
+	if(line = testPaths.length - 1) line = 0;
 	console.log(path)
 	const res = http.get(`${PROTOCOL}://${API_URL}${path}`, {
 		tags: {
