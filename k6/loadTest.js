@@ -48,11 +48,14 @@ export const options = {
 	},
 };
 
+let line = 0;
+
 export function setup() {
 }
 
 export default function(data) {
-	const path = testPaths[Math.floor(Math.random() * testPaths.length)]
+	const path = testPaths[line++]
+	console.log(path)
 	const res = http.get(`${PROTOCOL}://${API_URL}${path}`, {
 		tags: {
 			type: path.includes('metadata') ? 'metadata' : 'search',
