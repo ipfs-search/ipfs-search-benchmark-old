@@ -22,7 +22,6 @@ LOG_FILE: log file to take paths from. Default: 'paths.txt'
 
  */
 
-
 // init context: importing modules
 import { SharedArray } from 'k6/data';
 import http from 'k6/http';
@@ -31,7 +30,7 @@ import { check, sleep } from 'k6';
 const PROTOCOL = __ENV.PROTOCOL || 'https'
 const API_URL = __ENV.HOST || 'api.ipfs-search.com'
 const LOG_FILE= __ENV.LOG_FILE || 'access.log'
-const MAX_TIMEDIFF = __ENV.MAX_TIMEDIFF || 2 // s
+const MAX_TIMEDIFF = __ENV.MAX_TIMEDIFF || 1 // s
 
 // init context: define k6 options
 export const options = {
@@ -76,25 +75,27 @@ const logLines = SharedArray('test paths', () => {
 })
 
 // generate a dictionary of chronological arrays of loglines per user ID
-let previousTimestamp;
 const users = logLines.reduce((users, line) => {
-	const timeDiff = previousTimestamp ? line.timestamp - previousTimestamp : 0;
-	previousTimestamp = line.timestamp;
-	// For some reason k6 does not recognize object spread operator ...
-	let data = { timeDiff };
-	Object.assign(data, line)
 	if(users[line.uid]) {
+		const previousTimestamp = users[line.uid][users[line.uid].length - 1].timestamp;
+		const timeDiff = previousTimestamp ? line.timestamp - previousTimestamp : 0;
+		let data = { timeDiff };
+		// k6 does not recognize object spread operator ...
+		Object.assign(data, line)
 		users[line.uid].push(data);
 	}
 	else {
-		// timeDiff should be set to 0 here
-		users[line.uid] = [data];
+		users[line.uid] = [line];
 	}
 	return users;
 }, {})
 
-// setup context
+// Setup context
 // export function setup() {
+// }
+
+// Teardown context
+// export function teardown(data) {
 // }
 
 // VU context
@@ -103,7 +104,7 @@ export default function(data) {
 	const userCalls = users[userArray[Math.floor(Math.random() * userArray.length)]]
 	console.log(userCalls[0].uid)
 	for(const call of userCalls) {
-		sleep(Math.min(call.timeDiff / 1000, MAX_TIMEDIFF))
+		if(call.timeDiff) sleep(Math.min(call.timeDiff / 1000, MAX_TIMEDIFF))
 		const res = http.get(`${PROTOCOL}://${API_URL}${call.path}`, {
 			tags: {
 				type: call.path.includes('metadata') ? 'metadata' : 'search',
@@ -113,8 +114,4 @@ export default function(data) {
 			'is status 200': (r) => r.status === 200,
 		});
 	}
-}
-
-
-export function teardown(data) {
 }
