@@ -30,13 +30,8 @@ import { check, sleep } from 'k6';
 
 const PROTOCOL = __ENV.PROTOCOL || 'https'
 const API_URL = __ENV.HOST || 'api.ipfs-search.com'
-const LOG_FILE=__ENV.LOG_FILE || 'paths.txt'
-
-// init context: global variables
-const testPaths = SharedArray('test paths', () => {
-	const logFileContents = open(LOG_FILE);
-	return logFileContents.split(/\r?\n/)
-})
+const LOG_FILE= __ENV.LOG_FILE || 'access.log'
+const MAX_TIMEDIFF = __ENV.MAX_TIMEDIFF || 2 // s
 
 // init context: define k6 options
 export const options = {
@@ -48,24 +43,76 @@ export const options = {
 	},
 };
 
-let line = 0;
+// init context: global variables
+// logLines: process log lines into array of objects containing info like path, timecode, time Diff
+const logLines = SharedArray('test paths', () => {
+	const logFileContents = open(LOG_FILE);
+	return logFileContents.split(/\r?\n/)
+		.filter((line) => {
+			const pass = (
+				line
+				&& !line.includes('/v1/nsfw/classify') && line.includes('GET')
+				// caution must be take for log lines with malformed data (such as hack attempts)
+				&& (line.includes('https://ipfs-search.com/')
+					|| line.includes('http://ipfs-search.com.ipns.localhost:8080/'))
+			)
+			return pass
+		})
+		.map((line, index) => {
+			// should be improved by using a regex matcher or something else that parses log lines
+			// because the access logs have a layout reliant on brackets and quotes, not on spaces
+			const splitLine = line.split(' ')
+			// Times are logged in the 4th field like this: '[10/Oct/2022:07:13:49'
+			// the opening square bracket and the first colon throw off the date parser
+			const timestamp = splitLine[3].replace(':', ' ').slice(1)
+			return {
+				uid: splitLine[0],
+				timestamp,
+				path: splitLine[6],
+				statusCode: splitLine[8],
+				referer: splitLine[10].slice(1, splitLine[10].length - 1),
+			}
+		})
+})
 
-export function setup() {
-}
+// generate a dictionary of chronological arrays of loglines per user ID
+let previousTimestamp;
+const users = logLines.reduce((users, line) => {
+	const timeDiff = previousTimestamp ? line.timestamp - previousTimestamp : 0;
+	previousTimestamp = line.timestamp;
+	// For some reason k6 does not recognize object spread operator ...
+	let data = { timeDiff };
+	Object.assign(data, line)
+	if(users[line.uid]) {
+		users[line.uid].push(data);
+	}
+	else {
+		// timeDiff should be set to 0 here
+		users[line.uid] = [data];
+	}
+	return users;
+}, {})
 
+// setup context
+// export function setup() {
+// }
+
+// VU context
 export default function(data) {
-	const path = testPaths[line++]
-	if(line = testPaths.length - 1) line = 0;
-	console.log(path)
-	const res = http.get(`${PROTOCOL}://${API_URL}${path}`, {
-		tags: {
-			type: path.includes('metadata') ? 'metadata' : 'search',
-		}
-	});
-	check(res, {
-		'is status 200': (r) => r.status === 200,
-	});
-	sleep(1)
+	const userArray = Object.keys(users);
+	const userCalls = users[userArray[Math.floor(Math.random() * userArray.length)]]
+	console.log(userCalls[0].uid)
+	for(const call of userCalls) {
+		sleep(Math.min(call.timeDiff / 1000, MAX_TIMEDIFF))
+		const res = http.get(`${PROTOCOL}://${API_URL}${call.path}`, {
+			tags: {
+				type: call.path.includes('metadata') ? 'metadata' : 'search',
+			}
+		});
+		check(res, {
+			'is status 200': (r) => r.status === 200,
+		});
+	}
 }
 
 
