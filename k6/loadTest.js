@@ -3,22 +3,6 @@ K6 load test script for api.ipfs-search.com
 
 See https://k6.io/docs/get-started/installation/ for setup of k6
 
-To run, use:
-$ k6 run loadTest.js
-
-typical flags:
-create 1000 virtual users:
---vus 1000
-
-run for 60s:
---duration 60s
-
-environnment variables:
-K6_VUS: # of virtual users, default 1, alternative for --vus flag
-K6_DURATION: script running duration, default '10s', alterative for --duration flag
-PROTOCOL: http or https, default https
-HOST: host address of API, default 'api.ipfs-search.com'
-LOG_FILE: log file to take paths from. Default: 'paths.txt'
 
  */
 
