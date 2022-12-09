@@ -2,14 +2,13 @@
 K6 load test script for api.ipfs-search.com
 
 See https://k6.io/docs/get-started/installation/ for setup of k6
-
-
  */
 
 // init context: importing modules
 import { SharedArray } from 'k6/data';
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import exec from 'k6/execution';
 
 const PROTOCOL = __ENV.PROTOCOL || 'https'
 const API_URL = __ENV.HOST || 'api.ipfs-search.com'
@@ -74,6 +73,16 @@ const users = logLines.reduce((users, line) => {
 	return users;
 }, {})
 
+// Force the users in a fixed order array and map to array of arrays of actions.
+// Order is based on the users' first timestamp.
+const userLogs = SharedArray('user logs', () => {
+	return Object.values(users).sort((v1, v2) => {
+		return v1[0].timestamp - v2[0].timestamp;
+	});
+})
+
+let userIndex = 0;
+
 // Setup context
 // export function setup() {
 // }
@@ -84,9 +93,9 @@ const users = logLines.reduce((users, line) => {
 
 // VU context
 export default function(data) {
-	const userArray = Object.keys(users);
-	const userCalls = users[userArray[Math.floor(Math.random() * userArray.length)]]
-	console.log(userCalls[0].uid)
+	const userCalls = userLogs[userIndex % userLogs.length]
+	userIndex++;
+	console.log(exec.scenario.iterationInTest, userCalls[0].uid)
 	for(const call of userCalls) {
 		if(call.timeDiff) sleep(Math.min(call.timeDiff / 1000, MAX_TIMEDIFF))
 		const res = http.get(`${PROTOCOL}://${API_URL}${call.path}`, {
